@@ -8,6 +8,8 @@ const {
   getUserProfile,
   verifyToken,
   logoutUser,
+  forgotPassword,
+  resetPassword,
 } = require("../controller/user.controler.js");
 const auth = require("../middlewares/auth.middlewares.js");
 
@@ -20,5 +22,7 @@ router.post("/login", loginUser);
 router.post("/logout", logoutUser); // Protected logout
 router.put("/:id", auth, updateUser); // Protected update
 router.delete("/:id", auth, deleteUser); // Protected delete
+router.post("/forgotPassword", forgotPassword);
+router.post("/resetPassword/:token", resetPassword);
 
 module.exports = router;

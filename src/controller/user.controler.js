@@ -3,7 +3,84 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
-const { send } = require("process");
+
+// send gmail
+
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Check if the user exists in the database
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Generate a reset token and set an expiration time (e.g., 1 hour)
+    const token = crypto.randomBytes(20).toString("hex");
+    const expires = Date.now() + 3600000; // 1 hour from now
+
+    // Update the user with the reset token and expiration
+    user.resetToken = token;
+    user.tokenExpires = expires;
+    await user.save();
+
+    // Configure nodemailer transporter
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      port: process.env.PORT,
+      host: process.env.SMTP_HOST,
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_PASS,
+      },
+    });
+
+    // Send the reset email
+    const mailOptions = {
+      from: `"Coffee Application" <${process.env.GMAIL_USER}>`,
+      to: email,
+      subject: "Password Reset Request",
+      text: `You requested a password reset. Click the link below to reset your password:\n\nhttp://localhost:3000/api/user/reset-password/${token}\n\nIf you didn't request this, please ignore this email.`,
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    res.status(200).json({ message: "Password reset email sent request successfully" });
+  } catch (error) {
+    console.error("Error in forgotPassword:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// reset password
+const resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { newPassword } = req.body;
+
+    // Find the user by the reset token and check if it's still valid
+    const user = await userModel.findOne({
+      resetToken: token,
+      tokenExpires: { $gt: Date.now() }, // Ensure token is not expired
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
+
+    // Update the user's password
+    user.password = newPassword; // You should hash the password in a real app
+    user.resetToken = null;
+    user.tokenExpires = null;
+    await user.save();
+
+    res.status(200).json({ message: "Password reset successfully" });
+  } catch (error) {
+    console.error("Error in resetPassword:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
 
 // Get all users
 const getUser = async (req, res) => {
@@ -32,7 +109,10 @@ const createUser = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
     // Register user with hashed password
-    const user = await userModel.create({ ...req.body, password: hashedPassword });
+    const user = await userModel.create({
+      ...req.body,
+      password: hashedPassword,
+    });
 
     res.status(201).json({
       message: "User registered successfully!",
@@ -151,4 +231,6 @@ module.exports = {
   deleteUser,
   verifyToken,
   logoutUser,
+  forgotPassword,
+  resetPassword,
 };
